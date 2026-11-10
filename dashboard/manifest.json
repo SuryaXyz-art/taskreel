@@ -1,0 +1,10 @@
+{
+  "name": "taskreel",
+  "label": "Taskreel",
+  "description": "Live routine timeline for the Desktop pane.",
+  "version": "1.0.0",
+  "api": "plugin_api.py",
+  "tab": {
+    "hidden": true
+  }
+}
