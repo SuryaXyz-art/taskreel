@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 try:
-    from .redact import redact
+    from .redact import redact, redact_text
 except ImportError:  # unit tests load this file as a top-level module
-    from redact import redact
+    from redact import redact, redact_text
 
 OWN_TOOLS = frozenset({"save_routine", "run_routine", "list_routines"})
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
@@ -347,15 +347,16 @@ def replay(steps: list[dict], dispatch: Callable[[str, dict], str]) -> dict:
         except Exception as exc:
             result = json.dumps({"error": f"{type(exc).__name__}: {exc}"})
         ok, detail = check_checkpoint(step.get("checkpoint"), result)
-        done.append({"tool": tool, "summary": detail, "ok": ok})
+        shown_detail = redact_text(str(detail))
+        done.append({"tool": tool, "summary": shown_detail, "ok": ok})
         if not ok:
             return {
                 "ok": False,
                 "failed_step": index,
                 "tool": tool,
-                "args": args,
+                "args": redact(args),
                 "result": redact(_as_text(result))[:500],
-                "detail": detail,
+                "detail": shown_detail,
                 "model_calls": 0,
                 "steps_done": done,
             }

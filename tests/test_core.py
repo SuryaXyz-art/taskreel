@@ -97,12 +97,28 @@ class RoutineTests(unittest.TestCase):
         self.assertEqual(outcome["failed_step"], 0)
         self.assertEqual(outcome["model_calls"], 0)
         self.assertEqual(calls, [("terminal", {"command": command, "token": "sekretvalue1"})])
+        self.assertEqual(outcome["args"]["token"], "[REDACTED]")
+        self.assertLess(len(outcome["args"]["command"]), len(command))
+        self.assertNotIn("sekretvalue1", json.dumps(outcome))
 
     def test_save_refuses_args_that_cannot_round_trip(self):
         store, _ = memory_store()
         store.record_step("s", "write_file", {"content": (1, 2)}, "ok")
         saved = store.save_routine("demo-sort", "s", None)
         self.assertIn("step 1 (write_file)", saved["error"])
+
+    def test_failure_detail_hides_secrets(self):
+        store, _ = memory_store()
+        store.record_step("s", "terminal", {"command": "echo hi"}, "exit_code: 0")
+        store.save_routine("demo-sort", "s", [{"kind": "not_error"}])
+        outcome = replay(
+            store.load_routine("demo-sort"),
+            lambda tool, args: json.dumps({"error": "token=sekretvalue1"}),
+        )
+        self.assertFalse(outcome["ok"])
+        self.assertNotIn("sekretvalue1", json.dumps(outcome))
+        self.assertIn("[REDACTED]", outcome["detail"])
+        self.assertIn("[REDACTED]", outcome["steps_done"][0]["summary"])
 
     def test_replay_success(self):
         store, _ = memory_store()
