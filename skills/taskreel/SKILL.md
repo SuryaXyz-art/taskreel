@@ -13,4 +13,4 @@ Use this when the user wants a repeatable local task.
 3. Later, call `run_routine` with that name. Do not redo the steps yourself.
 4. If the result has `failed_step`, fix only that step, then save the routine again.
 
-`run_routine` reports `model_calls: 0`. Replay still goes through Hermes approvals.
+`run_routine` reports `model_calls: 0`. Each replayed step still hits that tool's own approval, such as the terminal dangerous-command prompt. Other plugins' pre_tool_call hooks and tool middleware do not see the replay.

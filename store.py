@@ -17,7 +17,6 @@ except ImportError:  # unit tests load this file as a top-level module
 OWN_TOOLS = frozenset({"save_routine", "run_routine", "list_routines"})
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
 _EXIT = re.compile(r"exit_code[\"'\s:=]+(-?\d+)")
-_MAX_STEPS = 40
 
 
 def utc_now() -> str:
@@ -78,6 +77,20 @@ def default_checkpoint(tool: str) -> dict:
     return {"kind": "not_error"}
 
 
+def encode_exact_args(args: Any) -> str | None:
+    """Return JSON that round-trips to the same dict, or None if it cannot."""
+    if not isinstance(args, dict):
+        return None
+    try:
+        encoded = json.dumps(args, sort_keys=True)
+        decoded = json.loads(encoded)
+    except (TypeError, ValueError):
+        return None
+    if decoded != args:
+        return None
+    return encoded
+
+
 class Store:
     def __init__(self, connect: Callable[[], sqlite3.Connection]):
         self._connect = connect
@@ -97,7 +110,8 @@ class Store:
                         tool_name TEXT NOT NULL,
                         args_json TEXT NOT NULL,
                         summary TEXT NOT NULL,
-                        created_at TEXT NOT NULL
+                        created_at TEXT NOT NULL,
+                        lossy INTEGER NOT NULL DEFAULT 1
                     );
                     CREATE TABLE IF NOT EXISTS routines (
                         name TEXT PRIMARY KEY,
@@ -110,6 +124,9 @@ class Store:
                     );
                     """
                 )
+                columns = {row[1] for row in conn.execute("PRAGMA table_info(steps)")}
+                if "lossy" not in columns:
+                    conn.execute("ALTER TABLE steps ADD COLUMN lossy INTEGER NOT NULL DEFAULT 1")
                 conn.commit()
             finally:
                 conn.close()
@@ -151,22 +168,22 @@ class Store:
     def record_step(self, session_id: str, tool_name: str, args: Any, result: Any) -> None:
         if self.replaying or tool_name in OWN_TOOLS:
             return
-        safe_args = redact(args if isinstance(args, dict) else {})
+        exact = encode_exact_args(args)
         summary = redact(_as_text(result))[:240]
         with self._lock:
             conn = self._connect()
             try:
                 conn.execute(
-                    "INSERT INTO steps (session_id, tool_name, args_json, summary, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (session_id, tool_name, json.dumps(safe_args), summary, utc_now()),
-                )
-                conn.execute(
-                    """
-                    DELETE FROM steps WHERE session_id = ? AND id NOT IN (
-                        SELECT id FROM steps WHERE session_id = ? ORDER BY id DESC LIMIT 50
-                    )
-                    """,
-                    (session_id, session_id),
+                    "INSERT INTO steps (session_id, tool_name, args_json, summary, created_at, lossy) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        session_id,
+                        tool_name,
+                        exact if exact is not None else "{}",
+                        summary,
+                        utc_now(),
+                        0 if exact is not None else 1,
+                    ),
                 )
                 rows = conn.execute(
                     "SELECT tool_name, summary FROM steps WHERE session_id = ? ORDER BY id",
@@ -190,27 +207,33 @@ class Store:
             conn = self._connect()
             try:
                 rows = conn.execute(
-                    "SELECT tool_name, args_json FROM steps WHERE session_id = ? ORDER BY id",
+                    "SELECT tool_name, args_json, lossy FROM steps WHERE session_id = ? ORDER BY id",
                     (session_id,),
                 ).fetchall()
             finally:
                 conn.close()
         steps = []
-        for tool_name, args_json in rows:
+        for index, (tool_name, args_json, lossy) in enumerate(rows, start=1):
             if tool_name in OWN_TOOLS:
                 continue
             try:
                 args = json.loads(args_json)
             except json.JSONDecodeError:
+                args = None
+                lossy = 1
+            if not isinstance(args, dict):
                 args = {}
+                lossy = 1
             steps.append(
                 {
+                    "step": index,
                     "tool": tool_name,
-                    "args": args if isinstance(args, dict) else {},
+                    "args": args,
+                    "lossy": bool(lossy),
                     "checkpoint": default_checkpoint(tool_name),
                 }
             )
-        return steps[-_MAX_STEPS:]
+        return steps
 
     def save_routine(self, name: str, session_id: str, checkpoints: list | None) -> dict:
         error = check_name(name)
@@ -219,6 +242,15 @@ class Store:
         steps = self.session_steps(session_id)
         if not steps:
             return {"error": "No steps recorded in this session yet. Do the task first, then save it."}
+        blocked = [step for step in steps if step.get("lossy")]
+        if blocked:
+            listed = ", ".join(f"step {step['step']} ({step['tool']})" for step in blocked)
+            return {
+                "error": (
+                    "Refusing to save because these steps cannot be replayed exactly: "
+                    f"{listed}. Re-record each one. Replay never sends truncated or redacted arguments."
+                )
+            }
         if checkpoints is not None:
             if not isinstance(checkpoints, list) or len(checkpoints) != len(steps):
                 return {"error": f"checkpoints must be a list of {len(steps)} objects, one per recorded step."}
@@ -238,7 +270,11 @@ class Store:
                     checkpoint["text"] = str(raw.get("text") or "")
                 applied.append({**step, "checkpoint": checkpoint})
             steps = applied
-        payload = json.dumps(steps)
+        stored = [
+            {"tool": step["tool"], "args": step["args"], "checkpoint": step["checkpoint"]}
+            for step in steps
+        ]
+        payload = json.dumps(stored)
         with self._lock:
             conn = self._connect()
             try:

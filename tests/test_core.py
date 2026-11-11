@@ -66,13 +66,25 @@ class CheckpointTests(unittest.TestCase):
 class RoutineTests(unittest.TestCase):
     def test_save_and_replay_stops_on_failure(self):
         store, _ = memory_store()
-        store.record_step("s", "terminal", {"command": "echo hi", "token": "sekretvalue1"}, '{"exit_code": 0}')
+        command = "echo " + ("x" * 800)
+        store.record_step(
+            "s",
+            "terminal",
+            {"command": command, "token": "sekretvalue1"},
+            "token=sekretvalue1 exit_code: 0",
+        )
+        shown = json.dumps(store.read_live())
+        self.assertNotIn("sekretvalue1", shown)
+        self.assertIn("[REDACTED]", shown)
         store.record_step("s", "save_routine", {"name": "ignored"}, "{}")
         saved = store.save_routine("demo-sort", "s", None)
         self.assertTrue(saved["ok"])
         self.assertEqual(saved["steps"], 1)
-        blob = json.dumps(store.load_routine("demo-sort"))
-        self.assertNotIn("sekretvalue1", blob)
+        stored = store.load_routine("demo-sort")[0]["args"]
+        self.assertEqual(stored["command"], command)
+        self.assertEqual(stored["token"], "sekretvalue1")
+        shown = json.dumps(store.read_live())
+        self.assertNotIn("sekretvalue1", shown)
 
         calls = []
 
@@ -84,7 +96,13 @@ class RoutineTests(unittest.TestCase):
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["failed_step"], 0)
         self.assertEqual(outcome["model_calls"], 0)
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls, [("terminal", {"command": command, "token": "sekretvalue1"})])
+
+    def test_save_refuses_args_that_cannot_round_trip(self):
+        store, _ = memory_store()
+        store.record_step("s", "write_file", {"content": (1, 2)}, "ok")
+        saved = store.save_routine("demo-sort", "s", None)
+        self.assertIn("step 1 (write_file)", saved["error"])
 
     def test_replay_success(self):
         store, _ = memory_store()

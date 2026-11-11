@@ -44,8 +44,8 @@ Load the workflow skill with `skill_view("taskreel:taskreel")`.
 
 - No network calls, no telemetry, no credentials, no background process.
 - Routines are stored in the Hermes plugin data directory for the active profile (`plugin-data/taskreel/data.db`).
-- Arguments and result summaries are redacted before they are stored. Values that look like tokens, keys, or passwords are replaced.
-- `run_routine` dispatches each saved step through Hermes tool dispatch. Approvals and guardrails still apply. This plugin does not auto-approve and does not spawn a shell of its own.
+- Replay stores the exact tool arguments. They are not truncated or redacted. A secret that was inside a tool argument is stored with the routine in that database. The pane, the step summary, and the text shown for a result are redacted copies. `save_routine` refuses the save if any step cannot be stored exactly, and it names that step.
+- `run_routine` dispatches each saved step through that tool's own Hermes handler. That tool's own approval still runs, for example the terminal dangerous-command prompt. Replay does not go through other plugins' `pre_tool_call` hooks or tool middleware, so guard plugins do not see replayed steps. This plugin does not auto-approve and does not spawn a shell of its own.
 - A `file_exists` checkpoint checks whether a path stored in the routine exists.
 - The Desktop pane polls `/api/plugins/taskreel/status` about every 1.5 seconds. That route only reads the live status row.
 - Unattended runs that need a person fail closed through Hermes approval. The plugin does not hang waiting for input.

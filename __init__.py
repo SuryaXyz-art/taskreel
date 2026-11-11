@@ -164,9 +164,11 @@ def register(ctx):
             "name": "run_routine",
             "description": (
                 "Replay a saved routine with no model call. Each step is dispatched "
-                "through Hermes, so approvals and guardrails still apply. Stops on "
-                "the first failed checkpoint and returns failed_step so only that "
-                "step needs a repair. model_calls is 0."
+                "with the exact arguments that were recorded. The tool's own approval "
+                "still runs, for example the terminal dangerous-command prompt. Replay "
+                "does not go through other plugins' pre_tool_call hooks or tool "
+                "middleware, so guard plugins do not see these steps. Stops on the "
+                "first failed checkpoint and returns failed_step. model_calls is 0."
             ),
             "parameters": {
                 "type": "object",

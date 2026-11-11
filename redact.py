@@ -1,4 +1,4 @@
-"""Redact secrets before a routine is written to disk."""
+"""Redact secrets in text that is shown, never in arguments that are replayed."""
 
 from __future__ import annotations
 
