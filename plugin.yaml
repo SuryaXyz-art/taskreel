@@ -1,5 +1,5 @@
 name: taskreel
-version: "1.0.2"
+version: "1.0.3"
 description: "Teach Hermes a local task once, then replay it with no model in the loop."
 author: SuryaXyz-art
 requires_hermes: ">=0.20.5"

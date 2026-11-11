@@ -213,7 +213,8 @@ class Store:
             finally:
                 conn.close()
         steps = []
-        for index, (tool_name, args_json, lossy) in enumerate(rows, start=1):
+        step_number = 0
+        for tool_name, args_json, lossy in rows:
             if tool_name in OWN_TOOLS:
                 continue
             try:
@@ -226,13 +227,14 @@ class Store:
                 lossy = 1
             steps.append(
                 {
-                    "step": index,
+                    "step": step_number,
                     "tool": tool_name,
                     "args": args,
                     "lossy": bool(lossy),
                     "checkpoint": default_checkpoint(tool_name),
                 }
             )
+            step_number += 1
         return steps
 
     def save_routine(self, name: str, session_id: str, checkpoints: list | None) -> dict:

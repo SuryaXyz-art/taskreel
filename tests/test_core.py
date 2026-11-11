@@ -105,7 +105,7 @@ class RoutineTests(unittest.TestCase):
         store, _ = memory_store()
         store.record_step("s", "write_file", {"content": (1, 2)}, "ok")
         saved = store.save_routine("demo-sort", "s", None)
-        self.assertIn("step 1 (write_file)", saved["error"])
+        self.assertIn("step 0 (write_file)", saved["error"])
 
     def test_failure_detail_hides_secrets(self):
         store, _ = memory_store()
@@ -119,6 +119,40 @@ class RoutineTests(unittest.TestCase):
         self.assertNotIn("sekretvalue1", json.dumps(outcome))
         self.assertIn("[REDACTED]", outcome["detail"])
         self.assertIn("[REDACTED]", outcome["steps_done"][0]["summary"])
+
+    def test_failed_step_is_zero_or_one(self):
+        store, _ = memory_store()
+        store.record_step("s", "terminal", {"command": "echo a"}, "exit_code: 0")
+        store.record_step("s", "terminal", {"command": "mkdir packed"}, "exit_code: 0")
+        saved = store.save_routine("demo-sort", "s", None)
+        self.assertTrue(saved["ok"])
+        routine = store.load_routine("demo-sort")
+
+        calls = []
+
+        def fail_first(tool, args):
+            del tool
+            calls.append(args["command"])
+            return '{"exit_code": 2}'
+
+        first = replay(routine, fail_first)
+        self.assertEqual(first["failed_step"], 0)
+        self.assertEqual(first["model_calls"], 0)
+        self.assertEqual(calls, ["echo a"])
+
+        calls.clear()
+
+        def fail_second(tool, args):
+            del tool
+            calls.append(args["command"])
+            if args["command"] == "echo a":
+                return '{"exit_code": 0}'
+            return '{"exit_code": 2}'
+
+        second = replay(routine, fail_second)
+        self.assertEqual(second["failed_step"], 1)
+        self.assertEqual(second["model_calls"], 0)
+        self.assertEqual(calls, ["echo a", "mkdir packed"])
 
     def test_replay_success(self):
         store, _ = memory_store()

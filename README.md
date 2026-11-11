@@ -26,7 +26,7 @@ Restart Hermes Desktop after the first install. The Taskreel pane sits on the ri
 | Tool | What it does |
 |---|---|
 | `save_routine` | Store this session's recorded steps under a short name. |
-| `run_routine` | Replay that routine. `model_calls` is 0. Stops at `failed_step`. |
+| `run_routine` | Replay that routine. `model_calls` is 0. Stops at `failed_step`. The index starts at 0. |
 | `list_routines` | List saved names and step counts. |
 
 Automatic checkpoints: `exit_ok` for the terminal tool, `not_error` for everything else. Pass `checkpoints` to `save_routine` to use `file_exists` or `output_contains` instead.

@@ -168,7 +168,8 @@ def register(ctx):
                 "still runs, for example the terminal dangerous-command prompt. Replay "
                 "does not go through other plugins' pre_tool_call hooks or tool "
                 "middleware, so guard plugins do not see these steps. Stops on the "
-                "first failed checkpoint and returns failed_step. model_calls is 0."
+                "first failed checkpoint and returns failed_step. The index starts "
+                "at 0, so 0 is the first step and 1 is the second. model_calls is 0."
             ),
             "parameters": {
                 "type": "object",
